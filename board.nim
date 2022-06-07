@@ -6,8 +6,7 @@ import words
 
 type
   Direction = enum
-    white, yellow, red, orange, green
-    # don't bother with black, track separately
+    white, yellow, red, orange, green, black
     # reminder that yellow is horizontal
   Info = object
     letter: char
@@ -28,6 +27,118 @@ proc initBoard(): Board =
   for i in 0..5:
     result.options[i] = answers
 
+proc printBoard(b: Board) =
+  for i, opts in b.options:
+    if i < 3:
+      echo "h", i+1
+    else:
+      echo "v", i-2
+    var j = 0
+    for w in opts:
+      if j >= 10:
+        write(stdout, "...(" & $len(opts) & ")")
+        break
+      write(stdout, w & ", ")
+      j += 1
+    echo()
+  echo()
+
+iterator wordsForCoords(pos: (int, int)): (int, int, bool, bool) =
+  # this yields the word index, the character in the word, whether it's vertical,
+  # and whether it's in the row/column or crossing
+  # this does not give the actual position as a crossing position
+  let (y, x) = pos
+  if y mod 2 == 0:
+    # on a horizontal word
+    yield (y div 2, x, false, true)
+  if x mod 2 == 0:
+    # on a vertical word
+    yield (3 + (x div 2), y, true, true)
+  # now the crossing words
+  for y2 in 0..2:
+    if y2*2 != y:
+      yield (y2, x, true, false)
+  for x2 in 0..2:
+    if x2*2 != x:
+      yield (3+x2, y, false, false)
+
+proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
+  var rem: seq[string] = @[]
+  for word in s:
+    if not keep(word):
+      rem.add(word)
+  for word in rem:
+    s.excl(word)
+
+proc addConstraint(b: var Board, idx: int, pos: (int, int), guess: char, dir: Direction) =
+  b.unchecked.excl(guess)
+  if dir == black:
+    # special case global remove
+    if guess notin b.excluded:
+      b.excluded.incl(guess)
+      for i in 0..<len(b.options):
+        b.options[i].filter do (w: string) -> bool:
+          guess notin w
+    return
+  # want to remove words that don't match the constraint
+  # want to do it quickly for both a) complete words and b) individual (excluded only for now)
+  # letters
+  let info = Info(letter: guess, dir: dir)
+  let (y, x) = pos
+  (b.info[y][x]).add(info)
+  var verinc, horinc, verexc, horexc, thisinc, thisexc = false
+  case dir
+  of white:
+    verexc = true
+    horexc = true
+    thisexc = true
+  of green:
+    thisinc = true
+  of red:
+    verinc = true
+    thisexc = true
+    horexc = true
+  of yellow:
+    horinc = true
+    thisexc = true
+    verexc = true
+  of orange:
+    horinc = true
+    verinc = true
+    thisexc = true
+  of black: discard # already did this one
+  for (wordidx, charidx, vert, fullword) in wordsForCoords(pos):
+    if fullword:
+      if thisinc:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] == guess
+      if thisexc:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] != guess
+      if verexc and vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess notin w
+      if horexc and not vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess notin w
+      if verinc and vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess in w
+      if horinc and not vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess in w
+    else:
+      if verexc and vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] != guess
+      if horexc and not vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] != guess
+  # TODO add cross-constraints from other words
+  # simplest: when a set size hits one, fix any non-green letters
+  # but can also do this when all options match on a given letter
+  # and then "must be one of" when they don't
+
 proc toDirection(x: char): Direction =
   case x
   of 'w':
@@ -40,6 +151,8 @@ proc toDirection(x: char): Direction =
     result = orange
   of 'g':
     result = green
+  of 'b':
+    result = black
   else:
     raise newException(ValueError, "invalid direction")
 
@@ -58,6 +171,7 @@ proc play() =
   echo "skip|done|five letters, five horizontal states, five vertical states"
   echo "states=w|y|r|o|g|b"
   echo "e.g. aargh wyrgb ogwyo"
+  # TODO handle multiple-hit clues
   while true:
     echo "reading index ", idx
     let input = readLineFromStdin("> ")
@@ -89,28 +203,16 @@ proc play() =
           continue
       var i = 0
       for coord in coordsForWords(idx):
-        # don't duplicate
-        if (idx == 0 and i == 5) or
-          (idx == 1 and i == 7) or
-          (idx == 2 and i == 9):
-          i += 1
-          continue
-        let y = coord[0]
-        let x = coord[1]
         var guess: char
         if i >= 5:
           guess = word[i-5]
         else:
           guess = word[i]
         let state = states[i]
-        b.unchecked.excl(guess)
-        if state == 'b':
-          b.excluded.incl(guess)
-        else:
-          let dir = state.toDirection
-          let info = Info(letter: guess, dir: dir)
-          (b.info[y][x]).add(info)
+        let dir = state.toDirection
+        b.addConstraint(idx, coord, guess, dir)
         i += 1
     idx = (idx + 1) mod 3
+    b.printBoard
 
 play()
