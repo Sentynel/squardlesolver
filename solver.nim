@@ -101,7 +101,7 @@ proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
     s.excl(word)
 
 # forward declared for mutual recursion
-proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction, outer: bool = true)
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction)
 
 proc checkForSingles(b: var Solver) =
   for i, wset in b.options:
@@ -112,7 +112,7 @@ proc checkForSingles(b: var Solver) =
       b.wordFixed[i] = true
       var ctr = 0
       for pos in coordsForWord(i):
-        b.addConstraint(pos, word[ctr], green, false)
+        b.addConstraint(pos, word[ctr], green)
         ctr += 1
 
 proc edgeFilter(b: var Solver) =
@@ -134,9 +134,10 @@ proc edgeFilter(b: var Solver) =
   b.checkForSingles()
   let endc = b.totalOpts
   if endc < start:
+    # repeat until we're not eliminating any further states
     b.edgeFilter()
 
-proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction, outer: bool = true) =
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) =
   b.unchecked.excl(guess)
   let info = Info(letter: guess, dir: dir, pos: pos)
   if dir == black:
@@ -202,9 +203,6 @@ proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction, 
         if horexc and not vert:
           b.options[wordidx].filter do (w: string) -> bool:
             w[charidx] != guess
-  if outer:
-    # only want to run this step once even if we recurse above
-    b.edgeFilter()
 
 proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
   var i = 0
@@ -217,6 +215,7 @@ proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
     let dir = dirs[i]
     b.addConstraint(coord, guess, dir)
     i += 1
+  b.edgeFilter()
 
 proc toDirection(x: char): Direction =
   case x
