@@ -1,6 +1,7 @@
 import std/sets
 import std/rdstdin
 import std/strutils
+import std/sugar
 
 import words
 
@@ -12,7 +13,7 @@ type
     letter: char
     dir: Direction
     pos: (int, int)
-  Board = object
+  Solver = object
     info: HashSet[Info]
     # words lists are horizontal top to bottom
     # then vertical left to right
@@ -21,18 +22,18 @@ type
     unchecked: set[char]
     excluded: set[char]
 
-proc initBoard(): Board =
-  result = Board()
+proc initSolver(): Solver =
+  result = Solver()
   result.unchecked = {'a'..'z'}
   result.excluded = {}
   for i in 0..5:
     result.options[i] = answers
 
-proc totalOpts(b: Board): int =
+proc totalOpts(b: Solver): int =
   for opt in b.options:
     result += len(opt)
 
-proc printBoard(b: Board) =
+proc printSolver(b: Solver) =
   for i, opts in b.options:
     if i < 3:
       echo "h", i+1
@@ -100,22 +101,21 @@ proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
     s.excl(word)
 
 # forward declared for mutual recursion
-proc addConstraint(b: var Board, pos: (int, int), guess: char, dir: Direction, outer: bool = true)
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction, outer: bool = true)
 
-proc checkForSingles(b: var Board) =
+proc checkForSingles(b: var Solver) =
   for i, wset in b.options:
     if len(wset) == 1 and not b.wordFixed[i]:
       var word: string
       for itm in wset:
         word = itm
-      echo "fixing word ", i, " to ", word
       b.wordFixed[i] = true
       var ctr = 0
       for pos in coordsForWord(i):
         b.addConstraint(pos, word[ctr], green, false)
         ctr += 1
 
-proc edgeFilter(b: var Board) =
+proc edgeFilter(b: var Solver) =
   let start = b.totalOpts
   for (hword, vword, hidx, vidx) in corners():
     var hset: set[char]
@@ -136,10 +136,9 @@ proc edgeFilter(b: var Board) =
   if endc < start:
     b.edgeFilter()
 
-proc addConstraint(b: var Board, pos: (int, int), guess: char, dir: Direction, outer: bool = true) =
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction, outer: bool = true) =
   b.unchecked.excl(guess)
   let info = Info(letter: guess, dir: dir, pos: pos)
-  let (y, x) = pos
   if dir == black:
     # special case global remove
     if guess in b.excluded:
@@ -205,9 +204,19 @@ proc addConstraint(b: var Board, pos: (int, int), guess: char, dir: Direction, o
             w[charidx] != guess
   if outer:
     # only want to run this step once even if we recurse above
-    echo "before edgeFilter ", b.totalOpts
     b.edgeFilter()
-    echo "after edgeFilter ", b.totalOpts
+
+proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
+  var i = 0
+  for coord in coordsForWords(idx):
+    let guess =
+      if i >= 5:
+        word[i-5]
+      else:
+        word[i]
+    let dir = dirs[i]
+    b.addConstraint(coord, guess, dir)
+    i += 1
 
 proc toDirection(x: char): Direction =
   case x
@@ -227,7 +236,7 @@ proc toDirection(x: char): Direction =
     raise newException(ValueError, "invalid direction " & x)
 
 proc play() =
-  var b = initBoard()
+  var b = initSolver()
   var idx = 0
   echo "skip|done|five letters, five horizontal states, five vertical states"
   echo "states=w|y|r|o|g|b"
@@ -252,28 +261,24 @@ proc play() =
       let ver = s[2]
       let states = hor & ver
       if word.len != 5 or hor.len != 5 or ver.len != 5:
-        echo "invalid input"
+        echo "invalid input lengths"
         continue
+      var ok = true
       for i in word:
         if i notin 'a'..'z':
-          echo "invalid input"
-          continue
+          echo "invalid input ", word
+          ok = false
       for i in states:
         if i notin "roywbg":
-          echo "invalid input"
-          continue
-      var i = 0
-      for coord in coordsForWords(idx):
-        var guess: char
-        if i >= 5:
-          guess = word[i-5]
-        else:
-          guess = word[i]
-        let state = states[i]
-        let dir = state.toDirection
-        b.addConstraint(coord, guess, dir)
-        i += 1
+          echo "invalid input ", i, " in ", states
+          ok = false
+      if not ok:
+        continue
+      let dirs = collect:
+        for i in states:
+          i.toDirection
+      b.addState(idx, word, dirs)
     idx = (idx + 1) mod 3
-    b.printBoard
+    b.printSolver
 
 play()
