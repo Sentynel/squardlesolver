@@ -86,6 +86,11 @@ iterator coordsForWord(idx: int): (int, int) =
     for i in 0..<5:
       yield (i, (idx-3)*2)
 
+iterator corners(): (int, int, int, int) =
+  for hword in 0..<3:
+    for vword in 0..<3:
+      yield (hword, vword+3, vword*2, hword*2)
+
 proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
   var rem: seq[string] = @[]
   for word in s:
@@ -94,9 +99,42 @@ proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
   for word in rem:
     s.excl(word)
 
-proc edgeFilter(b: Board) =
-  #let start = b.totalOpts
-  discard
+# forward declared for mutual recursion
+proc addConstraint(b: var Board, pos: (int, int), guess: char, dir: Direction, outer: bool = true)
+
+proc checkForSingles(b: var Board) =
+  for i, wset in b.options:
+    if len(wset) == 1 and not b.wordFixed[i]:
+      var word: string
+      for itm in wset:
+        word = itm
+      echo "fixing word ", i, " to ", word
+      b.wordFixed[i] = true
+      var ctr = 0
+      for pos in coordsForWord(i):
+        b.addConstraint(pos, word[ctr], green, false)
+        ctr += 1
+
+proc edgeFilter(b: var Board) =
+  let start = b.totalOpts
+  for (hword, vword, hidx, vidx) in corners():
+    var hset: set[char]
+    for i in b.options[hword]:
+      hset.incl(i[hidx])
+    var vset: set[char]
+    for i in b.options[vword]:
+      vset.incl(i[vidx])
+    let combine = hset * vset
+    if len(hset) > len(combine):
+      b.options[hword].filter do (w: string) -> bool:
+        w[hidx] in combine
+    if len(vset) > len(combine):
+      b.options[vword].filter do (w: string) -> bool:
+        w[vidx] in combine
+  b.checkForSingles()
+  let endc = b.totalOpts
+  if endc < start:
+    b.edgeFilter()
 
 proc addConstraint(b: var Board, pos: (int, int), guess: char, dir: Direction, outer: bool = true) =
   b.unchecked.excl(guess)
@@ -165,21 +203,6 @@ proc addConstraint(b: var Board, pos: (int, int), guess: char, dir: Direction, o
         if horexc and not vert:
           b.options[wordidx].filter do (w: string) -> bool:
             w[charidx] != guess
-    # TODO add cross-constraints from other words
-    # simplest: when a set size hits one, fix any non-green letters
-    # but can also do this when all options match on a given letter
-    # and then "must be one of" when they don't
-  for i, wset in b.options:
-    if len(wset) == 1 and not b.wordFixed[i]:
-      var word: string
-      for itm in wset:
-        word = itm
-      echo "fixing word ", i, " to ", word
-      b.wordFixed[i] = true
-      var ctr = 0
-      for pos in coordsForWord(i):
-        b.addConstraint(pos, word[ctr], green, false)
-        ctr += 1
   if outer:
     # only want to run this step once even if we recurse above
     echo "before edgeFilter ", b.totalOpts
@@ -201,7 +224,7 @@ proc toDirection(x: char): Direction =
   of 'b':
     result = black
   else:
-    raise newException(ValueError, "invalid direction")
+    raise newException(ValueError, "invalid direction " & x)
 
 proc play() =
   var b = initBoard()
