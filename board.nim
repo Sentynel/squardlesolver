@@ -11,12 +11,13 @@ type
   Info = object
     letter: char
     dir: Direction
+    pos: (int, int)
   Board = object
-    # just a 5x5 grid of the current state
-    info: array[0..4, array[0..4, seq[Info]]]
+    info: HashSet[Info]
     # words lists are horizontal top to bottom
     # then vertical left to right
     options: array[0..5, HashSet[string]]
+    wordFixed: array[0..5, bool]
     unchecked: set[char]
     excluded: set[char]
 
@@ -26,6 +27,10 @@ proc initBoard(): Board =
   result.excluded = {}
   for i in 0..5:
     result.options[i] = answers
+
+proc totalOpts(b: Board): int =
+  for opt in b.options:
+    result += len(opt)
 
 proc printBoard(b: Board) =
   for i, opts in b.options:
@@ -62,6 +67,25 @@ iterator wordsForCoords(pos: (int, int)): (int, int, bool, bool) =
     if x2*2 != x:
       yield (3+x2, y, false, false)
 
+iterator coordsForWords(idx: int): (int, int) =
+  # this gets coordinates for an input guess, i.e. both horizontal and vertical
+  var start = idx*2
+  # horizontal
+  for i in 0..<5:
+    yield (start, i)
+  # vertical
+  for i in 0..<5:
+    yield (i, start)
+
+iterator coordsForWord(idx: int): (int, int) =
+  if idx < 3:
+    # horizontal
+    for i in 0..<5:
+      yield (idx*2, i)
+  else:
+    for i in 0..<5:
+      yield (i, (idx-3)*2)
+
 proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
   var rem: seq[string] = @[]
   for word in s:
@@ -70,74 +94,97 @@ proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
   for word in rem:
     s.excl(word)
 
-proc addConstraint(b: var Board, idx: int, pos: (int, int), guess: char, dir: Direction) =
+proc edgeFilter(b: Board) =
+  #let start = b.totalOpts
+  discard
+
+proc addConstraint(b: var Board, pos: (int, int), guess: char, dir: Direction, outer: bool = true) =
   b.unchecked.excl(guess)
+  let info = Info(letter: guess, dir: dir, pos: pos)
+  let (y, x) = pos
   if dir == black:
     # special case global remove
-    if guess notin b.excluded:
-      b.excluded.incl(guess)
-      for i in 0..<len(b.options):
-        b.options[i].filter do (w: string) -> bool:
-          guess notin w
-    return
-  # want to remove words that don't match the constraint
-  # want to do it quickly for both a) complete words and b) individual (excluded only for now)
-  # letters
-  let info = Info(letter: guess, dir: dir)
-  let (y, x) = pos
-  (b.info[y][x]).add(info)
-  var verinc, horinc, verexc, horexc, thisinc, thisexc = false
-  case dir
-  of white:
-    verexc = true
-    horexc = true
-    thisexc = true
-  of green:
-    thisinc = true
-  of red:
-    verinc = true
-    thisexc = true
-    horexc = true
-  of yellow:
-    horinc = true
-    thisexc = true
-    verexc = true
-  of orange:
-    horinc = true
-    verinc = true
-    thisexc = true
-  of black: discard # already did this one
-  for (wordidx, charidx, vert, fullword) in wordsForCoords(pos):
-    if fullword:
-      if thisinc:
-        b.options[wordidx].filter do (w: string) -> bool:
-          w[charidx] == guess
-      if thisexc:
-        b.options[wordidx].filter do (w: string) -> bool:
-          w[charidx] != guess
-      if verexc and vert:
-        b.options[wordidx].filter do (w: string) -> bool:
-          guess notin w
-      if horexc and not vert:
-        b.options[wordidx].filter do (w: string) -> bool:
-          guess notin w
-      if verinc and vert:
-        b.options[wordidx].filter do (w: string) -> bool:
-          guess in w
-      if horinc and not vert:
-        b.options[wordidx].filter do (w: string) -> bool:
-          guess in w
-    else:
-      if verexc and vert:
-        b.options[wordidx].filter do (w: string) -> bool:
-          w[charidx] != guess
-      if horexc and not vert:
-        b.options[wordidx].filter do (w: string) -> bool:
-          w[charidx] != guess
-  # TODO add cross-constraints from other words
-  # simplest: when a set size hits one, fix any non-green letters
-  # but can also do this when all options match on a given letter
-  # and then "must be one of" when they don't
+    if guess in b.excluded:
+      return
+    b.excluded.incl(guess)
+    for i in 0..<len(b.options):
+      b.options[i].filter do (w: string) -> bool:
+        guess notin w
+  else:
+    # want to remove words that don't match the constraint
+    # want to do it quickly for both a) complete words and b) individual (excluded only for now)
+    # letters
+    if info in b.info:
+      return
+    b.info.incl(info)
+    var verinc, horinc, verexc, horexc, thisinc, thisexc = false
+    case dir
+    of white:
+      verexc = true
+      horexc = true
+      thisexc = true
+    of green:
+      thisinc = true
+    of red:
+      verinc = true
+      thisexc = true
+      horexc = true
+    of yellow:
+      horinc = true
+      thisexc = true
+      verexc = true
+    of orange:
+      horinc = true
+      verinc = true
+      thisexc = true
+    of black: discard # already did this one
+    for (wordidx, charidx, vert, fullword) in wordsForCoords(pos):
+      if fullword:
+        if thisinc:
+          b.options[wordidx].filter do (w: string) -> bool:
+            w[charidx] == guess
+        if thisexc:
+          b.options[wordidx].filter do (w: string) -> bool:
+            w[charidx] != guess
+        if verexc and vert:
+          b.options[wordidx].filter do (w: string) -> bool:
+            guess notin w
+        if horexc and not vert:
+          b.options[wordidx].filter do (w: string) -> bool:
+            guess notin w
+        if verinc and vert:
+          b.options[wordidx].filter do (w: string) -> bool:
+            guess in w
+        if horinc and not vert:
+          b.options[wordidx].filter do (w: string) -> bool:
+            guess in w
+      else:
+        if verexc and vert:
+          b.options[wordidx].filter do (w: string) -> bool:
+            w[charidx] != guess
+        if horexc and not vert:
+          b.options[wordidx].filter do (w: string) -> bool:
+            w[charidx] != guess
+    # TODO add cross-constraints from other words
+    # simplest: when a set size hits one, fix any non-green letters
+    # but can also do this when all options match on a given letter
+    # and then "must be one of" when they don't
+  for i, wset in b.options:
+    if len(wset) == 1 and not b.wordFixed[i]:
+      var word: string
+      for itm in wset:
+        word = itm
+      echo "fixing word ", i, " to ", word
+      b.wordFixed[i] = true
+      var ctr = 0
+      for pos in coordsForWord(i):
+        b.addConstraint(pos, word[ctr], green, false)
+        ctr += 1
+  if outer:
+    # only want to run this step once even if we recurse above
+    echo "before edgeFilter ", b.totalOpts
+    b.edgeFilter()
+    echo "after edgeFilter ", b.totalOpts
 
 proc toDirection(x: char): Direction =
   case x
@@ -155,15 +202,6 @@ proc toDirection(x: char): Direction =
     result = black
   else:
     raise newException(ValueError, "invalid direction")
-
-iterator coordsForWords(idx: int): (int, int) =
-  var start = idx*2
-  # horizontal
-  for i in 0..<5:
-    yield (start, i)
-  # vertical
-  for i in 0..<5:
-    yield (i, start)
 
 proc play() =
   var b = initBoard()
@@ -210,7 +248,7 @@ proc play() =
           guess = word[i]
         let state = states[i]
         let dir = state.toDirection
-        b.addConstraint(idx, coord, guess, dir)
+        b.addConstraint(coord, guess, dir)
         i += 1
     idx = (idx + 1) mod 3
     b.printBoard
