@@ -1,7 +1,6 @@
 import std/random
 import std/sugar
 import std/sysrand
-import std/rdstdin
 
 import words
 import consts
@@ -138,7 +137,7 @@ proc findWords(rng: var Rand, clue: string): string =
       return w
   return ""
 
-proc makeSquare(): array[0..5, string] =
+proc makeSquare*(): array[0..5, string] =
   var rng = makeRng()
   var ok = false
   var wordsUsed: array[0..5, string]
@@ -206,6 +205,7 @@ proc printBoard*(b: Board) =
   echo b.words[2]
 
 when isMainModule:
+  import std/rdstdin
   let b = generateBoard()
   b.printBoard
   for idx in 0..2:
