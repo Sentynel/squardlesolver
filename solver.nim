@@ -4,11 +4,9 @@ import std/strutils
 import std/sugar
 
 import words
+import consts
 
 type
-  Direction = enum
-    white, yellow, red, orange, green, black
-    # reminder that yellow is horizontal
   Info = object
     letter: char
     dir: Direction

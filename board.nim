@@ -1,12 +1,86 @@
 import std/random
 import std/sugar
 import std/sysrand
+import std/rdstdin
 
 import words
+import consts
 
 type
   Board* = object
     words: array[0..5, string]
+    allchars: set[char]
+
+proc makeGuess*(b: Board, idx: int, word: string): seq[Direction] =
+  # horizontal first
+  # note that like the solver we're not currently handling multiples
+  for i, c in word:
+    if c notin b.allchars:
+      result.add(black)
+      continue
+    if b.words[idx][i] == c:
+      result.add(green)
+      continue
+    var col = false
+    var row = false
+    for c2 in b.words[idx]:
+      if c2 == c:
+        row = true
+        break
+    if i mod 2 == 0:
+      # full word column
+      for colidx in 0..4:
+        if b.words[i div 2 + 3][colidx] == c:
+          col = true
+          break
+    else:
+      # just crossing the other horizontal words
+      for wordidx in 0..2:
+        if b.words[wordidx][i] == c:
+          col = true
+          break
+    if row and col:
+      result.add(orange)
+    elif row:
+      result.add(yellow)
+    elif col:
+      result.add(red)
+    else:
+      result.add(white)
+  # now vertical
+  for i, c in word:
+    if c notin b.allchars:
+      result.add(black)
+      continue
+    if b.words[idx+3][i] == c:
+      result.add(green)
+      continue
+    var col = false
+    var row = false
+    for c2 in b.words[idx+3]:
+      if c2 == c:
+        col = true
+        break
+    if i mod 2 == 0:
+      # full word row
+      for rowidx in 0..4:
+        if b.words[i div 2][rowidx] == c:
+          row = true
+          break
+    else:
+      # just crossing the other vertical words
+      for wordidx in 3..5:
+        if b.words[wordidx][i] == c:
+          row = true
+          break
+    if row and col:
+      result.add(orange)
+    elif row:
+      result.add(yellow)
+    elif col:
+      result.add(red)
+    else:
+      result.add(white)
 
 proc makeRng(): Rand =
   var seeda: array[0..7, byte]
@@ -117,7 +191,12 @@ proc makeSquare(): array[0..5, string] =
   return wordsUsed
 
 proc generateBoard*(): Board =
-  return Board(words: makeSquare())
+  let words = makeSquare()
+  var cset: set[char]
+  for w in words:
+    for c in w:
+      cset.incl(c)
+  return Board(words: words, allchars: cset)
 
 proc printBoard*(b: Board) =
   echo b.words[0]
@@ -129,3 +208,6 @@ proc printBoard*(b: Board) =
 when isMainModule:
   let b = generateBoard()
   b.printBoard
+  for idx in 0..2:
+    let input = readLineFromStdin("> ")
+    echo b.makeGuess(idx, input)
