@@ -2,6 +2,7 @@ import std/sets
 import std/rdstdin
 import std/strutils
 import std/sugar
+import std/times
 
 import words
 import consts
@@ -19,6 +20,8 @@ type
     wordFixed: array[0..5, bool]
     unchecked: set[char]
     excluded: set[char]
+    included: set[char]
+    oddchecks: seq[Info]
 
 proc initSolver(): Solver =
   result = Solver()
@@ -100,9 +103,37 @@ iterator allowedStates(b: Solver): array[0..5, string] =
                 continue
               if v3[4] != h3[4]:
                 continue
-              # TODO check white char and odd row/col constraints here
               let res = [h1, h2, h3, v1, v2, v3]
-              yield res
+              var allchars: set[char]
+              for w in res:
+                for c in w:
+                  allchars.incl(c)
+              if len(b.included - allchars) > 0:
+                continue
+              var ok = true
+              for info in b.oddchecks:
+                ok = false
+                let (y, x) = info.pos
+                if y mod 2 == 1:
+                  # horizontal, check vertical words
+                  for widx in 3..5:
+                    if (widx-3)*2 == x:
+                      continue
+                    if res[widx][y] == info.letter:
+                      ok = true
+                      break
+                else:
+                  # vertical, check horizontal words
+                  for widx in 0..2:
+                    if widx * 2 == y:
+                      continue
+                    if res[widx][x] == info.letter:
+                      ok = true
+                      break
+                if not ok:
+                  break
+              if ok:
+                yield res
 
 proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
   var rem: seq[string] = @[]
@@ -160,61 +191,66 @@ proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) 
     for i in 0..<len(b.options):
       b.options[i].filter do (w: string) -> bool:
         guess notin w
-  else:
-    # want to remove words that don't match the constraint
-    # want to do it quickly for both a) complete words and b) individual (excluded only for now)
-    # letters
-    if info in b.info:
-      return
-    b.info.incl(info)
-    var verinc, horinc, verexc, horexc, thisinc, thisexc = false
-    case dir
-    of white:
-      verexc = true
-      horexc = true
-      thisexc = true
-    of green:
-      thisinc = true
-    of red:
-      verinc = true
-      thisexc = true
-      horexc = true
-    of yellow:
-      horinc = true
-      thisexc = true
-      verexc = true
-    of orange:
-      horinc = true
-      verinc = true
-      thisexc = true
-    of black: discard # already did this one
-    for (wordidx, charidx, vert, fullword) in wordsForCoords(pos):
-      if fullword:
-        if thisinc:
-          b.options[wordidx].filter do (w: string) -> bool:
-            w[charidx] == guess
-        if thisexc:
-          b.options[wordidx].filter do (w: string) -> bool:
-            w[charidx] != guess
-        if verexc and vert:
-          b.options[wordidx].filter do (w: string) -> bool:
-            guess notin w
-        if horexc and not vert:
-          b.options[wordidx].filter do (w: string) -> bool:
-            guess notin w
-        if verinc and vert:
-          b.options[wordidx].filter do (w: string) -> bool:
-            guess in w
-        if horinc and not vert:
-          b.options[wordidx].filter do (w: string) -> bool:
-            guess in w
-      else:
-        if verexc and vert:
-          b.options[wordidx].filter do (w: string) -> bool:
-            w[charidx] != guess
-        if horexc and not vert:
-          b.options[wordidx].filter do (w: string) -> bool:
-            w[charidx] != guess
+    return
+  # want to remove words that don't match the constraint
+  # want to do it quickly for both a) complete words and b) individual (excluded only for now)
+  # letters
+  if info in b.info:
+    return
+  let (y, x) = pos
+  b.info.incl(info)
+  b.included.incl(guess)
+  var verinc, horinc, verexc, horexc, thisinc, thisexc = false
+  case dir
+  of white:
+    verexc = true
+    horexc = true
+    thisexc = true
+  of green:
+    thisinc = true
+  of red:
+    verinc = true
+    thisexc = true
+    horexc = true
+  of yellow:
+    horinc = true
+    thisexc = true
+    verexc = true
+  of orange:
+    horinc = true
+    verinc = true
+    thisexc = true
+  of black: discard # already did this one
+  if (horinc and y mod 2 == 1) or (verinc and x mod 2 == 1):
+    # these are the off-word crossing positions
+    b.oddchecks.add(info)
+  for (wordidx, charidx, vert, fullword) in wordsForCoords(pos):
+    if fullword:
+      if thisinc:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] == guess
+      if thisexc:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] != guess
+      if verexc and vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess notin w
+      if horexc and not vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess notin w
+      if verinc and vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess in w
+      if horinc and not vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          guess in w
+    else:
+      if verexc and vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] != guess
+      if horexc and not vert:
+        b.options[wordidx].filter do (w: string) -> bool:
+          w[charidx] != guess
 
 proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
   var i = 0
@@ -249,11 +285,18 @@ proc printSolver(b: Solver) =
       j += 1
     echo()
   echo "states upper bound: ", b.statesUpperBound
+  let starttime = cpuTime()
   if b.statesUpperBound < 1000000000: # yolo?
     let allstates = collect:
       for i in b.allowedStates:
+        let t = cpuTime()
+        if t - starttime > 10.0:
+          echo "spent 10 seconds generating states, stopping"
+          break
         i
     echo "number of states: ", len(allstates)
+    if len(allstates) == 1:
+      echo allstates[0]
   echo()
 
 proc toDirection(x: char): Direction =
