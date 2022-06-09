@@ -31,22 +31,6 @@ proc totalOpts(b: Solver): int =
   for opt in b.options:
     result += len(opt)
 
-proc printSolver(b: Solver) =
-  for i, opts in b.options:
-    if i < 3:
-      echo "h", i+1
-    else:
-      echo "v", i-2
-    var j = 0
-    for w in opts:
-      if j >= 10:
-        write(stdout, "...(" & $len(opts) & ")")
-        break
-      write(stdout, w & ", ")
-      j += 1
-    echo()
-  echo()
-
 iterator wordsForCoords(pos: (int, int)): (int, int, bool, bool) =
   # this yields the word index, the character in the word, whether it's vertical,
   # and whether it's in the row/column or crossing
@@ -86,9 +70,39 @@ iterator coordsForWord(idx: int): (int, int) =
       yield (i, (idx-3)*2)
 
 iterator corners(): (int, int, int, int) =
+  # yields horizontal word idx, vertical word idx, horizontal char idx, vertical char idx
   for hword in 0..<3:
     for vword in 0..<3:
       yield (hword, vword+3, vword*2, hword*2)
+
+iterator allowedStates(b: Solver): array[0..5, string] =
+  for h1 in b.options[0]:
+    for v1 in b.options[3]:
+      if h1[0] != v1[0]:
+        continue
+      for h2 in b.options[1]:
+        if h2[0] != v1[2]:
+          continue
+        for v2 in b.options[4]:
+          if v2[0] != h1[2]:
+            continue
+          if v2[2] != h2[2]:
+            continue
+          for h3 in b.options[2]:
+            if h3[0] != v1[4]:
+              continue
+            if h3[2] != v2[4]:
+              continue
+            for v3 in b.options[5]:
+              if v3[0] != h1[4]:
+                continue
+              if v3[2] != h2[4]:
+                continue
+              if v3[4] != h3[4]:
+                continue
+              # TODO check white char and odd row/col constraints here
+              let res = [h1, h2, h3, v1, v2, v3]
+              yield res
 
 proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
   var rem: seq[string] = @[]
@@ -214,6 +228,33 @@ proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
     b.addConstraint(coord, guess, dir)
     i += 1
   b.edgeFilter()
+
+proc statesUpperBound(b: Solver): int =
+  result = 1
+  for w in b.options:
+    result *= len(w)
+
+proc printSolver(b: Solver) =
+  for i, opts in b.options:
+    if i < 3:
+      echo "h", i+1
+    else:
+      echo "v", i-2
+    var j = 0
+    for w in opts:
+      if j >= 10:
+        write(stdout, "...(" & $len(opts) & ")")
+        break
+      write(stdout, w & ", ")
+      j += 1
+    echo()
+  echo "states upper bound: ", b.statesUpperBound
+  if b.statesUpperBound < 1000000000: # yolo?
+    let allstates = collect:
+      for i in b.allowedStates:
+        i
+    echo "number of states: ", len(allstates)
+  echo()
 
 proc toDirection(x: char): Direction =
   case x
