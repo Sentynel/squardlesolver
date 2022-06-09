@@ -22,6 +22,7 @@ type
     excluded: set[char]
     included: set[char]
     oddchecks: seq[Info]
+    realStateCount: int
 
 proc initSolver(): Solver =
   result = Solver()
@@ -252,6 +253,32 @@ proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) 
         b.options[wordidx].filter do (w: string) -> bool:
           w[charidx] != guess
 
+proc slowStateFilter(b: var Solver) =
+  var count = 0
+  let starttime = cpuTime()
+  var optsWord: array[0..5, HashSet[string]]
+  # I've decided that this isn't necessary because it's already effectively captured
+  # in pruning the options array
+  #var optsChar = array[0..5, array[0..5, set[char]]]
+  for state in b.allowedStates:
+    let t = cpuTime()
+    if t - starttime > 2.0:
+      echo "spent 2 seconds generating slow states, stopping"
+      return
+    count += 1
+    for idx, word in state:
+      optsWord[idx].incl(word)
+      #[
+      var ctr = 0
+      for pos in coordsForWord(idx):
+        let (y, x) = pos
+        optsChar[y][x].incl(word[ctr])
+        ctr += 1
+        ]#
+  b.options = optsWord
+  b.checkForSingles()
+  b.realStateCount = count
+
 proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
   var i = 0
   for coord in coordsForWords(idx):
@@ -264,6 +291,8 @@ proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
     b.addConstraint(coord, guess, dir)
     i += 1
   b.edgeFilter()
+  # it seems that this is always fast enough
+  b.slowStateFilter()
 
 proc statesUpperBound(b: Solver): int =
   result = 1
@@ -284,19 +313,8 @@ proc printSolver(b: Solver) =
       write(stdout, w & ", ")
       j += 1
     echo()
-  echo "states upper bound: ", b.statesUpperBound
-  let starttime = cpuTime()
-  if b.statesUpperBound < 1000000000: # yolo?
-    let allstates = collect:
-      for i in b.allowedStates:
-        let t = cpuTime()
-        if t - starttime > 10.0:
-          echo "spent 10 seconds generating states, stopping"
-          break
-        i
-    echo "number of states: ", len(allstates)
-    if len(allstates) == 1:
-      echo allstates[0]
+  if b.realStateCount > 0:
+    echo "total states: ", b.realStateCount
   echo()
 
 proc toDirection(x: char): Direction =
