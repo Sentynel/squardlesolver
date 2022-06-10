@@ -1,8 +1,6 @@
 import std/sets
-import std/rdstdin
-import std/strutils
-import std/sugar
 import std/times
+import std/math
 
 import words
 import consts
@@ -12,7 +10,7 @@ type
     letter: char
     dir: Direction
     pos: (int, int)
-  Solver = object
+  Solver* = object
     info: HashSet[Info]
     # words lists are horizontal top to bottom
     # then vertical left to right
@@ -22,9 +20,9 @@ type
     excluded: CharSet
     included: CharSet
     oddchecks: seq[Info]
-    realStateCount: int
+    realStateCount*: int
 
-proc initSolver(): Solver =
+proc initSolver*(): Solver =
   result = Solver()
   result.unchecked = {'a'..'z'}
   result.excluded = {}
@@ -145,9 +143,9 @@ proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
     s.excl(word)
 
 # forward declared for mutual recursion
-proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction)
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) {.gcsafe.}
 
-proc checkForSingles(b: var Solver) =
+proc checkForSingles(b: var Solver) {.gcsafe.} =
   for i, wset in b.options:
     if len(wset) == 1 and not b.wordFixed[i]:
       var word: string
@@ -159,7 +157,7 @@ proc checkForSingles(b: var Solver) =
         b.addConstraint(pos, word[ctr], green)
         ctr += 1
 
-proc edgeFilter(b: var Solver) =
+proc edgeFilter(b: var Solver) {.gcsafe.} =
   let start = b.totalOpts
   for (hword, vword, hidx, vidx) in corners():
     var hset: CharSet
@@ -181,7 +179,7 @@ proc edgeFilter(b: var Solver) =
     # repeat until we're not eliminating any further states
     b.edgeFilter()
 
-proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) =
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) {.gcsafe.} =
   b.unchecked.excl(guess)
   let info = Info(letter: guess, dir: dir, pos: pos)
   if dir == black:
@@ -253,7 +251,7 @@ proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) 
         b.options[wordidx].filter do (w: string) -> bool:
           w[charidx] != guess
 
-proc slowStateFilter(b: var Solver) =
+proc slowStateFilter(b: var Solver) {.gcsafe.} =
   var count = 0
   let starttime = cpuTime()
   var optsWord: array[0..5, HashSet[string]]
@@ -262,8 +260,9 @@ proc slowStateFilter(b: var Solver) =
   #var optsChar = array[0..5, array[0..5, set[char]]]
   for state in b.allowedStates:
     let t = cpuTime()
-    if t - starttime > 2.0:
-      echo "spent 2 seconds generating slow states, stopping"
+    if t - starttime > 10.0:
+      echo "spent 10 seconds generating slow states, stopping"
+      b.realStateCount = -count
       return
     count += 1
     for idx, word in state:
@@ -279,9 +278,13 @@ proc slowStateFilter(b: var Solver) =
   b.checkForSingles()
   b.realStateCount = count
 
-proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
+proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast: bool = false) {.gcsafe.} =
   var i = 0
+  if len(word) != 5:
+    raise newException(ValueError, "invalid word length " & word)
   for coord in coordsForWords(idx):
+    if len(word) != 5:
+      raise newException(ValueError, "invalid word length during iteration " & word & " " & $i)
     let guess =
       if i >= 5:
         word[i-5]
@@ -291,93 +294,110 @@ proc addState(b: var Solver, idx: int, word: string, dirs: seq[Direction]) =
     b.addConstraint(coord, guess, dir)
     i += 1
   b.edgeFilter()
-  # it seems that this is always fast enough
-  b.slowStateFilter()
+  if not fast:
+    b.slowStateFilter()
 
-proc statesUpperBound(b: Solver): int =
+proc statesUpperBound*(b: Solver): int =
   result = 1
   for w in b.options:
     result *= len(w)
 
-proc printSolver(b: Solver) =
-  for i, opts in b.options:
-    if i < 3:
-      echo "h", i+1
-    else:
-      echo "v", i-2
-    var j = 0
-    for w in opts:
-      if j >= 10:
-        write(stdout, "...(" & $len(opts) & ")")
-        break
-      write(stdout, w & ", ")
-      j += 1
+proc estStates*(b: Solver): int =
+  let ub = b.statesUpperBound
+  # empirically derived, validity slightly questionable for large ub
+  # also off a bit for small bounds, but that doesn't matter so much
+  # in the middle this is a surprisingly accurate proxy though
+  # log(ub) = 2.5 * log(states) + 3.25
+  # states = e^((log(ub) - 3.25) / 2.5)
+  result = int(pow(E, (ln(float64(ub)) - 3.25) / 2.5))
+
+when isMainModule:
+  import std/rdstdin
+  import std/strutils
+  import std/sugar
+  proc printSolver(b: Solver) =
+    for i, opts in b.options:
+      if i < 3:
+        echo "h", i+1
+      else:
+        echo "v", i-2
+      var j = 0
+      for w in opts:
+        if j >= 10:
+          write(stdout, "...(" & $len(opts) & ")")
+          break
+        write(stdout, w & ", ")
+        j += 1
+      echo()
+    echo "state upper bound: ", b.statesUpperBound
+    if b.realStateCount < 0:
+      echo "total states at least: ", -b.realStateCount
+    elif b.realStateCount > 0:
+      echo "total states: ", b.realStateCount
+    echo "estimated states: ", b.estStates
     echo()
-  if b.realStateCount > 0:
-    echo "total states: ", b.realStateCount
-  echo()
 
-proc toDirection(x: char): Direction =
-  case x
-  of 'w':
-    result = white
-  of 'y':
-    result = yellow
-  of 'r':
-    result = red
-  of 'o':
-    result = orange
-  of 'g':
-    result = green
-  of 'b':
-    result = black
-  else:
-    raise newException(ValueError, "invalid direction " & x)
-
-proc play() =
-  var b = initSolver()
-  var idx = 0
-  echo "skip|done|five letters, five horizontal states, five vertical states"
-  echo "states=w|y|r|o|g|b"
-  echo "e.g. aargh wyrgb ogwyo"
-  # TODO handle multiple-hit clues
-  while true:
-    echo "reading index ", idx
-    let input = readLineFromStdin("> ")
-    case input
-    of "done":
-      break
-    of "skip":
-      idx = (idx + 1) mod 3
-      continue
+  proc toDirection(x: char): Direction =
+    case x
+    of 'w':
+      result = white
+    of 'y':
+      result = yellow
+    of 'r':
+      result = red
+    of 'o':
+      result = orange
+    of 'g':
+      result = green
+    of 'b':
+      result = black
     else:
-      let s = input.split
-      if s.len != 3:
-        echo "invalid input, needs 3 parts"
-        continue
-      let word = s[0]
-      let hor = s[1]
-      let ver = s[2]
-      let states = hor & ver
-      if word.len != 5 or hor.len != 5 or ver.len != 5:
-        echo "invalid input lengths"
-        continue
-      var ok = true
-      for i in word:
-        if i notin 'a'..'z':
-          echo "invalid input ", word
-          ok = false
-      for i in states:
-        if i notin "roywbg":
-          echo "invalid input ", i, " in ", states
-          ok = false
-      if not ok:
-        continue
-      let dirs = collect:
-        for i in states:
-          i.toDirection
-      b.addState(idx, word, dirs)
-    idx = (idx + 1) mod 3
-    b.printSolver
+      raise newException(ValueError, "invalid direction " & x)
 
-play()
+  proc play() =
+    var b = initSolver()
+    var idx = 0
+    echo "skip|done|five letters, five horizontal states, five vertical states"
+    echo "states=w|y|r|o|g|b"
+    echo "e.g. aargh wyrgb ogwyo"
+    # TODO handle multiple-hit clues
+    while true:
+      echo "reading index ", idx
+      let input = readLineFromStdin("> ")
+      case input
+      of "done":
+        break
+      of "skip":
+        idx = (idx + 1) mod 3
+        continue
+      else:
+        let s = input.split
+        if s.len != 3:
+          echo "invalid input, needs 3 parts"
+          continue
+        let word = s[0]
+        let hor = s[1]
+        let ver = s[2]
+        let states = hor & ver
+        if word.len != 5 or hor.len != 5 or ver.len != 5:
+          echo "invalid input lengths"
+          continue
+        var ok = true
+        for i in word:
+          if i notin 'a'..'z':
+            echo "invalid input ", word
+            ok = false
+        for i in states:
+          if i notin "roywbg":
+            echo "invalid input ", i, " in ", states
+            ok = false
+        if not ok:
+          continue
+        let dirs = collect:
+          for i in states:
+            i.toDirection
+        b.addState(idx, word, dirs)
+      idx = (idx + 1) mod 3
+      b.printSolver
+
+  play()

@@ -1,6 +1,8 @@
 import std/random
 import std/sugar
 import std/sysrand
+import std/strutils
+import std/os
 
 import words
 import consts
@@ -81,7 +83,7 @@ proc makeGuess*(b: Board, idx: int, word: string): seq[Direction] =
     else:
       result.add(white)
 
-proc makeRng(): Rand =
+proc makeRng*(): Rand =
   var seeda: array[0..7, byte]
   discard urandom(seeda)
   # eww
@@ -111,13 +113,20 @@ proc getLetter(rng: var Rand): char =
   const cdf = makeCdf(freqComp)
   return rng.sample(alpha, cdf)
 
-iterator shuffled(rng: var Rand, words: seq[string]): string =
-  if len(words) != 2315:
+# special cases for the word list lengths
+# rest are just binary powers
+const primes = [1063, 2111, 2333, 4127, 8273, 10709]
+const generators = [513, 1111, 1243, 2367, 4346, 5432]
+iterator shuffled*[T](rng: var Rand, words: seq[T]): T =
+  var m, a: int
+  for i, p in primes:
+    if p > len(words):
+      m = p
+      a = generators[i]
+  if m == 0:
     # this is cheap, but it's easy to end up with something which isn't
     # a generator over the full group if this changes
     raise newException(ValueError, "someone needs to update the word list length")
-  const m = 2333 # first prime above 2315
-  const a = 1243 # just something which is a generator
   let c = rng.rand(0..m)
   var x = rng.rand(0..m)
   for i in 0..<m-1:
@@ -187,15 +196,23 @@ proc makeSquare*(): array[0..5, string] =
           x -= 2
       x += 2
   # if we got here we have a board
+  if rng.rand(0..1) == 1:
+    # flip board, not sure this is needed but upstream does it
+    let tmp = wordsUsed
+    wordsUsed[0..2] = tmp[3..5]
+    wordsUsed[3..5] = tmp[0..2]
   return wordsUsed
 
-proc generateBoard*(): Board =
-  let words = makeSquare()
+proc boardFromWords(words: array[0..5, string]): Board =
   var cset: CharSet
   for w in words:
     for c in w:
       cset.incl(c)
   return Board(words: words, allchars: cset)
+
+proc generateBoard*(): Board =
+  let words = makeSquare()
+  return boardFromWords(words)
 
 proc printBoard*(b: Board) =
   echo b.words[0]
@@ -203,6 +220,22 @@ proc printBoard*(b: Board) =
   echo b.words[1]
   echo b.words[3][3], " ", b.words[4][3], " ", b.words[5][3]
   echo b.words[2]
+
+proc loadBoard*(s: string): Board =
+  let words = s.split()
+  if len(words) != 6:
+    raise newException(ValueError, "invalid words length " & $len(words))
+  var wa: array[0..5, string]
+  for i, w in words[0..5]:
+    wa[i] = w
+  return boardFromWords(wa)
+
+proc loadTestBoards*(): seq[Board] =
+  for fn in walkFiles("boards*.txt"):
+    var o = open(fn, fmRead)
+    defer: o.close()
+    for line in o.lines:
+      result.add(loadBoard(line))
 
 when isMainModule:
   import std/rdstdin
