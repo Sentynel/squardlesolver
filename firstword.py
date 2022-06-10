@@ -28,3 +28,6 @@ print("by median:")
 a = sorted(avs, key=lambda x: medians[x])[:100]
 for i in a:
     print(f"{i} av {avs[i]} +- {stdevs[i]} med {medians[i]} min {mins[i]} max {maxs[i]}")
+
+i = "trial"
+print(f"{i} av {avs[i]} +- {stdevs[i]} med {medians[i]} min {mins[i]} max {maxs[i]}")

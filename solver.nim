@@ -21,6 +21,7 @@ type
     included: CharSet
     oddchecks: seq[Info]
     realStateCount*: int
+    move: int
 
 proc initSolver*(): Solver =
   result = Solver()
@@ -296,6 +297,7 @@ proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast
   b.edgeFilter()
   if not fast:
     b.slowStateFilter()
+  b.move += 1
 
 proc statesUpperBound*(b: Solver): int =
   # return the logarithm because this gets big
@@ -318,6 +320,11 @@ proc estStates*(b: Solver): int =
     # log(ub) = 1.2 * log(states) + 16.8
     # TODO rerun the staterelate.nim test with bigger numbers, this is a bit sketch
     result = int(pow(E, (float64(ub) - 16.8) / 1.2))
+
+proc suggest*(b: Solver): string =
+  if b.move == 0:
+    return "raise"
+  return ""
 
 when isMainModule:
   import std/rdstdin
@@ -370,6 +377,7 @@ when isMainModule:
     echo "e.g. aargh wyrgb ogwyo"
     # TODO handle multiple-hit clues
     while true:
+      echo "suggested: ", b.suggest()
       echo "reading index ", idx
       let input = readLineFromStdin("> ")
       case input
