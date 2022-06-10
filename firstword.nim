@@ -6,52 +6,39 @@ import board
 import solver
 import words
 
-const wordsPerCheck = 100
-const checks = 100
+const firstWordChecks = 100
 type
-  ResArray = array[0..wordsPerCheck*2+1,int]
+  FirstWordResArray = array[0..firstWordChecks, int]
 
-proc reduceStates(boards: seq[Board], word: string): ResArray {.gcsafe.} =
-  # output is real state count, state upper bound for each test board
+proc reduceState(boards: seq[Board], word: string): FirstWordResArray {.gcsafe.} =
   echo "testing word ", word
   var ctr = 0
   var rng = makeRng()
   for board in shuffled(rng, boards):
     var solver = initSolver()
     let dirs = board.makeGuess(0, word)
-    solver.addState(0, word, dirs)
-    result[ctr*2] = (solver.realStateCount)
-    result[ctr*2+1] = (solver.statesUpperBound)
-    if ctr >= wordsPerCheck:
+    solver.addState(0, word, dirs, true) # fast check
+    # log(upperbound)
+    result[ctr] = solver.statesUpperBound
+    if ctr >= firstWordChecks:
       break
     ctr += 1
 
-proc compareStateReductions() =
+# if you try and put this array on the stack you will run out of space
+var results: array[0..len(allWords)-1,FirstWordResArray]
+proc tryFirstWords() =
   let boards = loadTestBoards()
-  #var results: array[0..len(allWords)-1,seq[int]]
-  var results: array[0..checks,ResArray]
-  var rng = makeRng()
-  var words: array[0..checks,string]
-  var i = 0
-  echo "shuffling words"
-  for w in shuffled(rng, allWords):
-    words[i] = w
-    i += 1
-    if i > checks:
-      break
-  echo "done"
-
   parallel:
-    for i in 0..checks:
-      results[i] = spawn reduceStates(boards, words[i])
+    for i in 0..<len(allWords):
+      results[i] = spawn reduceState(boards, allWords[i])
 
-  var f = open("statereduction.csv", fmWrite)
+  var f = open("firstword.csv", fmWrite)
   defer: f.close()
-  for i, word in words:
+  for i, word in allWords:
     var line = word
     for j in results[i]:
       line &= "," & $j
     f.writeLine(line)
 
 when isMainModule:
-  compareStateReductions()
+  tryFirstWords()

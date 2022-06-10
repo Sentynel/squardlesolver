@@ -251,7 +251,7 @@ proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) 
         b.options[wordidx].filter do (w: string) -> bool:
           w[charidx] != guess
 
-proc slowStateFilter(b: var Solver) {.gcsafe.} =
+proc slowStateFilter*(b: var Solver) {.gcsafe.} =
   var count = 0
   let starttime = cpuTime()
   var optsWord: array[0..5, HashSet[string]]
@@ -298,18 +298,26 @@ proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast
     b.slowStateFilter()
 
 proc statesUpperBound*(b: Solver): int =
-  result = 1
+  # return the logarithm because this gets big
+  var res = 0.0
   for w in b.options:
-    result *= len(w)
+    res += ln(float64(len(w)))
+  return int(res)
 
 proc estStates*(b: Solver): int =
   let ub = b.statesUpperBound
-  # empirically derived, validity slightly questionable for large ub
-  # also off a bit for small bounds, but that doesn't matter so much
-  # in the middle this is a surprisingly accurate proxy though
-  # log(ub) = 2.5 * log(states) + 3.25
-  # states = e^((log(ub) - 3.25) / 2.5)
-  result = int(pow(E, (ln(float64(ub)) - 3.25) / 2.5))
+  if b.realStateCount > 0:
+    # we've pruned unreachable states and can use a more accurate algorithm
+    # though I'm not sure why we would, since we know the actual state count
+    # at this point!
+    result = int(pow(E, (float64(ub) - 3.25) / 2.5))
+  else:
+    # empirically derived, validity slightly questionable for large ub
+    # also off a bit for small bounds, but that doesn't matter so much
+    # in the middle this is a surprisingly accurate proxy though
+    # log(ub) = 1.2 * log(states) + 16.8
+    # TODO rerun the staterelate.nim test with bigger numbers, this is a bit sketch
+    result = int(pow(E, (float64(ub) - 16.8) / 1.2))
 
 when isMainModule:
   import std/rdstdin
@@ -329,7 +337,7 @@ when isMainModule:
         write(stdout, w & ", ")
         j += 1
       echo()
-    echo "state upper bound: ", b.statesUpperBound
+    echo "log(state upper bound): ", b.statesUpperBound
     if b.realStateCount < 0:
       echo "total states at least: ", -b.realStateCount
     elif b.realStateCount > 0:

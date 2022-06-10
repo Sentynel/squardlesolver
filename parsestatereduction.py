@@ -8,8 +8,8 @@ with open("statereduction.csv",newline="") as f:
     r = csv.reader(f)
     for row in r:
         word, *row = row
-        for a,b in zip(row[::2], row[1::2]):
-            n = math.log(int(b))
+        for a,n in zip(row[::2], row[1::2]):
+            b = math.e ** n
             if int(a) < 0:
                 m = math.log(-int(a))
                 partial.append((str(-int(a)), b, str(m), str(n)))
