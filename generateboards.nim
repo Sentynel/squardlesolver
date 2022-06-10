@@ -22,5 +22,5 @@ proc makeBoards(n: int) =
 
 randomize()
 parallel:
-  for i in 0..(countProcessors()-1):
+  for i in 0..((countProcessors() div 2)-1):
     spawn makeBoards(rand(0..9999))

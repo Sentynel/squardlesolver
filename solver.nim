@@ -18,9 +18,9 @@ type
     # then vertical left to right
     options: array[0..5, HashSet[string]]
     wordFixed: array[0..5, bool]
-    unchecked: set[char]
-    excluded: set[char]
-    included: set[char]
+    unchecked: CharSet
+    excluded: CharSet
+    included: CharSet
     oddchecks: seq[Info]
     realStateCount: int
 
@@ -105,7 +105,7 @@ iterator allowedStates(b: Solver): array[0..5, string] =
               if v3[4] != h3[4]:
                 continue
               let res = [h1, h2, h3, v1, v2, v3]
-              var allchars: set[char]
+              var allchars: CharSet
               for w in res:
                 for c in w:
                   allchars.incl(c)
@@ -162,10 +162,10 @@ proc checkForSingles(b: var Solver) =
 proc edgeFilter(b: var Solver) =
   let start = b.totalOpts
   for (hword, vword, hidx, vidx) in corners():
-    var hset: set[char]
+    var hset: CharSet
     for i in b.options[hword]:
       hset.incl(i[hidx])
-    var vset: set[char]
+    var vset: CharSet
     for i in b.options[vword]:
       vset.incl(i[vidx])
     let combine = hset * vset

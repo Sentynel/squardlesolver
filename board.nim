@@ -8,7 +8,7 @@ import consts
 type
   Board* = object
     words: array[0..5, string]
-    allchars: set[char]
+    allchars: CharSet
 
 proc makeGuess*(b: Board, idx: int, word: string): seq[Direction] =
   # horizontal first
@@ -191,7 +191,7 @@ proc makeSquare*(): array[0..5, string] =
 
 proc generateBoard*(): Board =
   let words = makeSquare()
-  var cset: set[char]
+  var cset: CharSet
   for w in words:
     for c in w:
       cset.incl(c)
