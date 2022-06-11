@@ -28,6 +28,7 @@ type
     realStateCount*: int
     move*: int
     letterPlaced: array[0..4,array[0..4,char]]
+    nextIdx*: int
 
 proc initSolver*(): Solver =
   result = Solver()
@@ -287,11 +288,19 @@ proc slowStateFilter*(b: var Solver) {.gcsafe.} =
   b.checkForSingles()
   b.realStateCount = count
 
-proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast: bool = false): int {.gcsafe.} =
+proc hasWon*(b: Solver): bool =
+  for y in 0..4:
+    for x in 0..4:
+      if (y mod 2 == 0) or (x mod 2 == 0):
+        if b.letterPlaced[y][x] == '\0':
+          return false
+  return true
+
+proc addState*(b: var Solver, word: string, dirs: seq[Direction], fast: bool = false): int {.gcsafe.} =
   var i = 0
   if len(word) != 5:
     raise newException(ValueError, "invalid word length " & word)
-  for coord in coordsForWords(idx):
+  for coord in coordsForWords(b.nextIdx):
     if len(word) != 5:
       raise newException(ValueError, "invalid word length during iteration " & word & " " & $i)
     let guess =
@@ -317,6 +326,17 @@ proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast
     # the second anyway
     b.slowStateFilter()
   b.move += 1
+  # update nextIdx
+  if b.hasWon:
+    # can't do anything sensible here
+    b.nextIdx = -1
+  else:
+    while true:
+      b.nextIdx = (b.nextIdx + 1) mod 3
+      for (y, x) in coordsForWords(b.nextIdx):
+        if b.letterPlaced[y][x] == '\0':
+          # empty slot
+          return
 
 proc statesUpperBound*(b: Solver): float64 =
   # return the logarithm because this gets big
@@ -363,14 +383,6 @@ proc getTargetSet(b: Solver, idx: int): array[0..4, CharSet] =
     else:
       result[i] = hor[i] + ver[i]
 
-proc hasWon*(b: Solver): bool =
-  for y in 0..4:
-    for x in 0..4:
-      if (y mod 2 == 0) or (x mod 2 == 0):
-        if b.letterPlaced[y][x] == '\0':
-          return false
-  return true
-
 iterator combineShuffle(matches: HashSet[string], opts: seq[string]): string =
   # ensure that we consider words that actually match before spending ages
   # fishing for partials
@@ -397,10 +409,10 @@ proc sortSuggest(b: Solver, matches: HashSet[string], opts: seq[string]): seq[st
       var states: seq[int]
       for bstate in b.allowedStates:
         let board = boardFromWords(bstate)
-        let move = b.move mod 3
+        let move = b.nextIdx
         var solver = b
         let dirs = board.makeGuess(move, word)
-        let green = solver.addState(move, word, dirs)
+        let green = solver.addState(word, dirs)
         let state = solver.realStateCount
         greens.add(green)
         states.add(state)
@@ -427,7 +439,7 @@ proc suggest*(b: Solver): string =
           break
       if ok:
         return i
-  let idx = b.move mod 3
+  let idx = b.nextIdx
   let matches = b.options[idx] + b.options[idx+3]
   let ts = b.getTargetSet(idx)
   var opts: seq[string] = collect:
@@ -486,21 +498,17 @@ when isMainModule:
 
   proc play() =
     var b = initSolver()
-    var idx = 0
-    echo "skip|done|five letters, five horizontal states, five vertical states"
+    echo "done|five letters, five horizontal states, five vertical states"
     echo "states=w|y|r|o|g|b"
     echo "e.g. aargh wyrgb ogwyo"
     # TODO handle multiple-hit clues
     while true:
       echo "suggested: ", b.suggest()
-      echo "reading index ", idx
+      echo "reading index ", b.nextIdx
       let input = readLineFromStdin("> ")
       case input
       of "done":
         break
-      of "skip":
-        idx = (idx + 1) mod 3
-        continue
       else:
         let s = input.split
         if s.len != 3:
@@ -527,8 +535,7 @@ when isMainModule:
         let dirs = collect:
           for i in states:
             i.toDirection
-        discard b.addState(idx, word, dirs)
-      idx = (idx + 1) mod 3
+        discard b.addState(word, dirs)
       b.printSolver
 
   play()

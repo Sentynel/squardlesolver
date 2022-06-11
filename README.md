@@ -25,6 +25,13 @@ slightly more useful formats.
 `testsolver.nim` runs the solver in its current form against a set of 1000
 test boards and outputs some statistics about the results.
 
+## Results
+
+Most boards solve in 8 moves, with 6 best case and 10 worst case. CPU time is
+limited to 1s per move (though normally it uses a lot less). There was some
+fairly extensive precomputation for the first couple of moves though, see
+below.
+
 ## Approach
 
 ### First word choice

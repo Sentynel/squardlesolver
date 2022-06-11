@@ -12,14 +12,13 @@ const ngames = 1000
 proc playGame(cnt: int, board: Board): int =
   echo cnt
   var solver = initSolver()
-  var idx = 0
   #board.printBoard()
   while not solver.hasWon:
+    let idx = solver.nextIdx
     let guess = solver.suggest()
     let dirs = board.makeGuess(idx, guess)
     #echo guess, " ", dirs
-    discard solver.addState(idx, guess, dirs)
-    idx = (idx + 1) mod 3
+    discard solver.addState(guess, dirs)
     if solver.move > 20:
       echo "failed to win, giving up"
       board.printBoard()
