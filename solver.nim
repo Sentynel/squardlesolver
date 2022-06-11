@@ -299,12 +299,10 @@ proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast
     b.slowStateFilter()
   b.move += 1
 
-proc statesUpperBound*(b: Solver): int =
+proc statesUpperBound*(b: Solver): float64 =
   # return the logarithm because this gets big
-  var res = 0.0
   for w in b.options:
-    res += ln(float64(len(w)))
-  return int(res)
+    result += ln(float64(len(w)))
 
 proc estStates*(b: Solver): int =
   let ub = b.statesUpperBound
@@ -312,7 +310,7 @@ proc estStates*(b: Solver): int =
     # we've pruned unreachable states and can use a more accurate algorithm
     # though I'm not sure why we would, since we know the actual state count
     # at this point!
-    result = int(pow(E, (float64(ub) - 3.25) / 2.5))
+    result = int(pow(E, (ub - 3.25) / 2.5))
   else:
     # empirically derived, validity slightly questionable for large ub
     # also off a bit for small bounds, but that doesn't matter so much
@@ -321,9 +319,20 @@ proc estStates*(b: Solver): int =
     # TODO rerun the staterelate.nim test with bigger numbers, this is a bit sketch
     result = int(pow(E, (float64(ub) - 16.8) / 1.2))
 
+# TODO improve these
+const suggest2nd = ["glean","liart","grunt","golem","cools","poncy"]
 proc suggest*(b: Solver): string =
   if b.move == 0:
     return "raise"
+  if b.move == 1:
+    for i in suggest2nd:
+      var ok = true
+      for c in i:
+        if c in b.excluded:
+          ok = false
+          break
+      if ok:
+        return i
   return ""
 
 when isMainModule:

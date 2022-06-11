@@ -20,3 +20,13 @@ reduction is actually the best first move, for that matter.)
 
 Incidentally, the worst is "qaraq", with other bad options including xylyl,
 immix, oxbow, pzazz and buzzy.
+
+## Second word choice
+
+The state space is still typically fairly large after the first word, making
+testing every word against it slightly challenging. I assert that a "good"
+choice of second word doesn't vary that much on the results of the first word,
+with the obvious exception that in the event of one of the letters in the first
+guess not showing up. Obviously there is some variation, but it's not huge.
+Right now I'm using this list, but this should change after a bigger stats run:
+`["glean","liart","grunt","golem","cools","poncy"]`

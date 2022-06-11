@@ -7,11 +7,11 @@ maxs = {}
 avs = {}
 stdevs = {}
 medians = {}
-with open("firstword.csv",newline="") as f:
+with open("secondword.csv",newline="") as f:
     r = csv.reader(f)
     for row in r:
         word, *row = row
-        row = [float(i) for i in row]
+        row = [int(i) for i in row]
         mins[word] = min(row)
         maxs[word] = max(row)
         avs[word] = statistics.mean(row)

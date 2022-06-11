@@ -6,10 +6,10 @@ import board
 import solver
 import words
 
-const wordsPerCheck = 30
-const checks = 30
+const wordsPerCheck = 100
+const checks = 100
 type
-  ResArray = array[0..wordsPerCheck*2+1,int]
+  ResArray = array[0..wordsPerCheck*2+1,float64]
 
 proc reduceStates(boards: seq[Board], word: string): ResArray {.gcsafe.} =
   # output is real state count, state upper bound for each test board
@@ -25,7 +25,7 @@ proc reduceStates(boards: seq[Board], word: string): ResArray {.gcsafe.} =
     let ub = solver.statesUpperBound
     # then do a slow state check
     solver.slowStateFilter()
-    result[ctr*2] = solver.realStateCount
+    result[ctr*2] = float64(solver.realStateCount)
     result[ctr*2+1] = ub
     if ctr >= wordsPerCheck:
       break
@@ -33,7 +33,6 @@ proc reduceStates(boards: seq[Board], word: string): ResArray {.gcsafe.} =
 
 proc compareStateReductions() =
   let boards = loadTestBoards()
-  #var results: array[0..len(allWords)-1,seq[int]]
   var results: array[0..checks,ResArray]
   var rng = makeRng()
   var words: array[0..checks,string]

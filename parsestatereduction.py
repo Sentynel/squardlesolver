@@ -9,7 +9,7 @@ with open("statereduction.csv",newline="") as f:
     for row in r:
         word, *row = row
         for a,n in zip(row[::2], row[1::2]):
-            b = math.e ** n
+            b = math.e ** float(n)
             if int(a) < 0:
                 m = math.log(-int(a))
                 partial.append((str(-int(a)), b, str(m), str(n)))

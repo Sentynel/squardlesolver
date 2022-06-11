@@ -6,9 +6,9 @@ import board
 import solver
 import words
 
-const firstWordChecks = 100
+const firstWordChecks = 1000
 type
-  FirstWordResArray = array[0..firstWordChecks, int]
+  FirstWordResArray = array[0..firstWordChecks, float64]
 
 proc reduceState(boards: seq[Board], word: string): FirstWordResArray {.gcsafe.} =
   echo "testing word ", word

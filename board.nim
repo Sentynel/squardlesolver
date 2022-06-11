@@ -115,8 +115,8 @@ proc getLetter(rng: var Rand): char =
 
 # special cases for the word list lengths
 # rest are just binary powers
-const primes = [1063, 2111, 2333, 4127, 8273, 10709]
-const generators = [513, 1111, 1243, 2367, 4346, 5432]
+const primes = [1063, 2111, 2333, 4127, 8273, 10709, 12973]
+const generators = [513, 1111, 1243, 2367, 4346, 5432, 6373]
 iterator shuffled*[T](rng: var Rand, words: seq[T]): T =
   var m, a: int
   for i, p in primes:
