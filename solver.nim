@@ -22,11 +22,11 @@ type
     options: array[0..5, HashSet[string]]
     wordFixed: array[0..5, bool]
     unchecked: CharSet
-    excluded: CharSet
+    excluded*: CharSet
     included: CharSet
     oddchecks: seq[Info]
     realStateCount*: int
-    move: int
+    move*: int
     letterPlaced: array[0..4,array[0..4,char]]
 
 proc initSolver*(): Solver =
@@ -340,6 +340,8 @@ proc estStates*(b: Solver): int =
 proc getTargetSet(b: Solver, idx: int): array[0..4, CharSet] =
   var hor: array[0..4, CharSet]
   var ver: array[0..4, CharSet]
+  var all: CharSet = {'a'..'z'}
+  all = all - b.excluded
   var ctr = 0
   for (y, x) in coordsForWords(idx):
     if b.letterPlaced[y][x] != '\0':
@@ -356,24 +358,40 @@ proc getTargetSet(b: Solver, idx: int): array[0..4, CharSet] =
     ctr += 1
   for i in 0..4:
     if len(hor[i]) == 0 or len(ver[i]) == 0:
-      result[i] = {'a'..'z'}
+      result[i] = all
     else:
       result[i] = hor[i] + ver[i]
 
-proc sortSuggest(b: Solver, opts: seq[string]): seq[string] =
+proc hasWon*(b: Solver): bool =
+  for y in 0..4:
+    for x in 0..4:
+      if (y mod 2 == 0) or (x mod 2 == 0):
+        if b.letterPlaced[y][x] == '\0':
+          return false
+  return true
+
+iterator combineShuffle(matches: HashSet[string], opts: seq[string]): string =
+  # ensure that we consider words that actually match before spending ages
+  # fishing for partials
+  let starttime = cpuTime()
+  for i in matches:
+    yield i
+  var rng = makeRng()
+  for i in rng.shuffled(opts):
+    let t = cpuTime()
+    if t - starttime > 1.0:
+      echo "spent over a second testing word guesses, stopping"
+      break
+    yield i
+
+proc sortSuggest(b: Solver, matches: HashSet[string], opts: seq[string]): seq[string] =
   # okay, so
   # for each word we could guess
   # we want to test every state that remains
   # and count how many states are _left_, and how many green
   # squares we hit, prioritising odds
-  let starttime = cpuTime()
-  var rng = makeRng()
   let keys = collect:
-    for word in rng.shuffled(opts):
-      let t = cpuTime()
-      if t - starttime > 1.0:
-        echo "spent over a second testing word guesses, stopping"
-        break
+    for word in combineShuffle(matches, opts):
       var greens: seq[int]
       var states: seq[int]
       for bstate in b.allowedStates:
@@ -408,6 +426,7 @@ proc suggest*(b: Solver): string =
       if ok:
         return i
   let idx = b.move mod 3
+  let matches = b.options[idx] + b.options[idx+3]
   let ts = b.getTargetSet(idx)
   var opts: seq[string] = collect:
     for w in allWords:
@@ -416,36 +435,36 @@ proc suggest*(b: Solver): string =
         if c notin ts[i]:
           ok = false
           break
-      if ok:
+      if ok and w notin matches:
         w
-  opts = b.sortSuggest(opts)
+  opts = b.sortSuggest(matches, opts)
   return opts[0]
+
+proc printSolver*(b: Solver) =
+  for i, opts in b.options:
+    if i < 3:
+      echo "h", i+1
+    else:
+      echo "v", i-2
+    var j = 0
+    for w in opts:
+      if j >= 10:
+        write(stdout, "...(" & $len(opts) & ")")
+        break
+      write(stdout, w & ", ")
+      j += 1
+    echo()
+  echo "log(state upper bound): ", b.statesUpperBound
+  if b.realStateCount < 0:
+    echo "total states at least: ", -b.realStateCount
+  elif b.realStateCount > 0:
+    echo "total states: ", b.realStateCount
+  echo "estimated states: ", b.estStates
+  echo()
 
 when isMainModule:
   import std/rdstdin
   import std/strutils
-  proc printSolver(b: Solver) =
-    for i, opts in b.options:
-      if i < 3:
-        echo "h", i+1
-      else:
-        echo "v", i-2
-      var j = 0
-      for w in opts:
-        if j >= 10:
-          write(stdout, "...(" & $len(opts) & ")")
-          break
-        write(stdout, w & ", ")
-        j += 1
-      echo()
-    echo "log(state upper bound): ", b.statesUpperBound
-    if b.realStateCount < 0:
-      echo "total states at least: ", -b.realStateCount
-    elif b.realStateCount > 0:
-      echo "total states: ", b.realStateCount
-    echo "estimated states: ", b.estStates
-    echo()
-
   proc toDirection(x: char): Direction =
     case x
     of 'w':
