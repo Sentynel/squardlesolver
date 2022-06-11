@@ -30,3 +30,34 @@ with the obvious exception that in the event of one of the letters in the first
 guess not showing up. Obviously there is some variation, but it's not huge.
 Right now I'm using this list, but this should change after a bigger stats run:
 `["glean","liart","grunt","golem","cools","poncy"]`
+
+## Subsequent word choices
+
+We're trying to balance a couple of competing requirements here:
+
+1. Reduce the remaining state space.
+2. Land green letters.
+
+Once the state space is pinned down, optimising for landing green letters is
+_relatively_ simple: prioritise the odd letters (as they can only be landed by
+one input each, whereas the crossing ones get two chance), followed by any
+letters.
+
+Before that, balancing the two is difficult. In general the state collapses
+pretty fast, and in many cases it'll hit 1 in the course of guessing a single
+word anyway. The exceptions are largely cases like trope/trove where an odd-
+placed uncommon consonant is difficult to reduce without just guessing it
+individually.
+
+Question: Is it better to just guess the best word out of the ones we know it
+could be, or is there a case for testing the entire word space? When you have
+two partials, finding a word which finishes both of them is better than
+getting each one individually, but it's reasonably uncommon that that's
+possible.
+
+The current algorithm prioritises the average green squares, weighted at 2:1
+for odd:even squares, followed by the average remaining state count. It does
+not consider words which have a zero probability of landing a green for any
+unknown letter; I don't know if this is sensible or not but it keeps the check
+size manageable. Note that the average green squares is inverted so that
+smallest values overall win.

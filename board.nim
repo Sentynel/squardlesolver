@@ -115,8 +115,8 @@ proc getLetter(rng: var Rand): char =
 
 # special cases for the word list lengths
 # rest are just binary powers
-const primes = [1063, 2111, 2333, 4127, 8273, 10709, 12973]
-const generators = [513, 1111, 1243, 2367, 4346, 5432, 6373]
+const primes = [67, 131, 257, 521, 1063, 2111, 2333, 4127, 8273, 10709, 12973]
+const generators = [41, 67, 131, 257, 513, 1111, 1243, 2367, 4346, 5432, 6373]
 iterator shuffled*[T](rng: var Rand, words: seq[T]): T =
   var m, a: int
   for i, p in primes:
@@ -203,7 +203,7 @@ proc makeSquare*(): array[0..5, string] =
     wordsUsed[3..5] = tmp[0..2]
   return wordsUsed
 
-proc boardFromWords(words: array[0..5, string]): Board =
+proc boardFromWords*(words: array[0..5, string]): Board =
   var cset: CharSet
   for w in words:
     for c in w:

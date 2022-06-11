@@ -1,9 +1,14 @@
 import std/sets
 import std/times
 import std/math
+import std/sugar
+import std/tables
+import std/stats
+import std/algorithm
 
 import words
 import consts
+import board
 
 type
   Info = object
@@ -22,6 +27,7 @@ type
     oddchecks: seq[Info]
     realStateCount*: int
     move: int
+    letterPlaced: array[0..4,array[0..4,char]]
 
 proc initSolver*(): Solver =
   result = Solver()
@@ -144,7 +150,7 @@ proc filter(s: var HashSet[string], keep: proc (w: string): bool {.closure.}) =
     s.excl(word)
 
 # forward declared for mutual recursion
-proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) {.gcsafe.}
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction): bool {.gcsafe.}
 
 proc checkForSingles(b: var Solver) {.gcsafe.} =
   for i, wset in b.options:
@@ -155,7 +161,7 @@ proc checkForSingles(b: var Solver) {.gcsafe.} =
       b.wordFixed[i] = true
       var ctr = 0
       for pos in coordsForWord(i):
-        b.addConstraint(pos, word[ctr], green)
+        discard b.addConstraint(pos, word[ctr], green)
         ctr += 1
 
 proc edgeFilter(b: var Solver) {.gcsafe.} =
@@ -180,7 +186,7 @@ proc edgeFilter(b: var Solver) {.gcsafe.} =
     # repeat until we're not eliminating any further states
     b.edgeFilter()
 
-proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) {.gcsafe.} =
+proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction): bool {.gcsafe.} =
   b.unchecked.excl(guess)
   let info = Info(letter: guess, dir: dir, pos: pos)
   if dir == black:
@@ -195,6 +201,8 @@ proc addConstraint(b: var Solver, pos: (int, int), guess: char, dir: Direction) 
   # want to remove words that don't match the constraint
   # want to do it quickly for both a) complete words and b) individual (excluded only for now)
   # letters
+  if dir == green:
+    result = true
   if info in b.info:
     return
   let (y, x) = pos
@@ -279,7 +287,7 @@ proc slowStateFilter*(b: var Solver) {.gcsafe.} =
   b.checkForSingles()
   b.realStateCount = count
 
-proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast: bool = false) {.gcsafe.} =
+proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast: bool = false): int {.gcsafe.} =
   var i = 0
   if len(word) != 5:
     raise newException(ValueError, "invalid word length " & word)
@@ -292,7 +300,17 @@ proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast
       else:
         word[i]
     let dir = dirs[i]
-    b.addConstraint(coord, guess, dir)
+    let hit = b.addConstraint(coord, guess, dir)
+    if hit:
+      let (y, x) = coord
+      if b.letterplaced[y][x] == '\0':
+        if (y mod 2 == 1) or (x mod 2 == 1):
+          # TUNABLE how much we prioritise odd squares
+          # prioritise odd squares
+          result += 2
+        else:
+          result += 1
+        b.letterplaced[y][x] = guess
     i += 1
   b.edgeFilter()
   if not fast:
@@ -319,6 +337,62 @@ proc estStates*(b: Solver): int =
     # TODO rerun the staterelate.nim test with bigger numbers, this is a bit sketch
     result = int(pow(E, (float64(ub) - 16.8) / 1.2))
 
+proc getTargetSet(b: Solver, idx: int): array[0..4, CharSet] =
+  var hor: array[0..4, CharSet]
+  var ver: array[0..4, CharSet]
+  var ctr = 0
+  for (y, x) in coordsForWords(idx):
+    if b.letterPlaced[y][x] != '\0':
+      # we already have this letter
+      ctr += 1
+      continue
+    if ctr < 5:
+      # horizontal
+      for w in b.options[idx]:
+        hor[x].incl(w[x])
+    else:
+      for w in b.options[idx+3]:
+        ver[y].incl(w[y])
+    ctr += 1
+  for i in 0..4:
+    if len(hor[i]) == 0 or len(ver[i]) == 0:
+      result[i] = {'a'..'z'}
+    else:
+      result[i] = hor[i] + ver[i]
+
+proc sortSuggest(b: Solver, opts: seq[string]): seq[string] =
+  # okay, so
+  # for each word we could guess
+  # we want to test every state that remains
+  # and count how many states are _left_, and how many green
+  # squares we hit, prioritising odds
+  let starttime = cpuTime()
+  var rng = makeRng()
+  let keys = collect:
+    for word in rng.shuffled(opts):
+      let t = cpuTime()
+      if t - starttime > 1.0:
+        echo "spent over a second testing word guesses, stopping"
+        break
+      var greens: seq[int]
+      var states: seq[int]
+      for bstate in b.allowedStates:
+        let board = boardFromWords(bstate)
+        let move = b.move mod 3
+        var solver = b
+        let dirs = board.makeGuess(move, word)
+        let green = solver.addState(move, word, dirs)
+        let state = solver.realStateCount
+        greens.add(green)
+        states.add(state)
+      # this could be so many things
+      # note that we want a high g and a small s
+      result.add(word)
+      # TUNABLE what the sort key looks like here
+      {word: (-greens.mean, states.mean)}
+  result.sort do (x, y: string) -> int:
+    cmp(keys[x], keys[y])
+
 # TODO improve these
 const suggest2nd = ["glean","liart","grunt","golem","cools","poncy"]
 proc suggest*(b: Solver): string =
@@ -333,12 +407,23 @@ proc suggest*(b: Solver): string =
           break
       if ok:
         return i
-  return ""
+  let idx = b.move mod 3
+  let ts = b.getTargetSet(idx)
+  var opts: seq[string] = collect:
+    for w in allWords:
+      var ok = true
+      for i, c in w:
+        if c notin ts[i]:
+          ok = false
+          break
+      if ok:
+        w
+  opts = b.sortSuggest(opts)
+  return opts[0]
 
 when isMainModule:
   import std/rdstdin
   import std/strutils
-  import std/sugar
   proc printSolver(b: Solver) =
     for i, opts in b.options:
       if i < 3:
@@ -421,7 +506,7 @@ when isMainModule:
         let dirs = collect:
           for i in states:
             i.toDirection
-        b.addState(idx, word, dirs)
+        discard b.addState(idx, word, dirs)
       idx = (idx + 1) mod 3
       b.printSolver
 
