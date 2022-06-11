@@ -1,8 +1,33 @@
 # Squardle solver
 
-Very WIP.
+## Usage
 
-## First word choice
+You need nim installed to build: `curl https://nim-lang.org/choosenim/init.sh
+-sSf | sh`
+
+Run the interactive solver using `nim -d:release --mm:arc r solver.nim`. This
+will suggest moves to you. Input your results as `guess horizontal_result
+vertical_result`, where results are given as the string of colours you get,
+identified by first letter (e.g. red green yellow black white = `rgybw`). Give
+the overlapping character twice.
+
+## Supporting tools
+
+These should pretty much all be run with `nim -d:release --mm:arc --threads:on
+r whatever.nim`. They mostly expect you've run `generateboards.nim` first to
+build test boards.
+
+`staterelate.nim`, `firstword.nim` and `secondword.nim` are statistics tools
+used for validating the approach and choosing the first and second word
+guesses. The corresponding `*.py` files process the output from these into
+slightly more useful formats.
+
+`testsolver.nim` runs the solver in its current form against a set of 1000
+test boards and outputs some statistics about the results.
+
+## Approach
+
+### First word choice
 
 Some testing reveals that estimating the number of states by multiplying the
 number of options for each word is a decent enough proxy for the true number
@@ -21,7 +46,7 @@ reduction is actually the best first move, for that matter.)
 Incidentally, the worst is "qaraq", with other bad options including xylyl,
 immix, oxbow, pzazz and buzzy.
 
-## Second word choice
+### Second word choice
 
 The state space is still typically fairly large after the first word, making
 testing every word against it slightly challenging. I assert that a "good"
@@ -31,7 +56,7 @@ guess not showing up. Obviously there is some variation, but it's not huge.
 Right now I'm using this list, but this should change after a bigger stats run:
 `["glean","liart","grunt","golem","cools","poncy"]`
 
-## Subsequent word choices
+### Subsequent word choices
 
 We're trying to balance a couple of competing requirements here:
 
@@ -60,4 +85,5 @@ for odd:even squares, followed by the average remaining state count. It does
 not consider words which have a zero probability of landing a green for any
 unknown letter; I don't know if this is sensible or not but it keeps the check
 size manageable. Note that the average green squares is inverted so that
-smallest values overall win.
+smallest values overall win. It makes sure to test the actual matching words
+first if there's a lot of options to avoid silly misses.

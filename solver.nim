@@ -411,8 +411,7 @@ proc sortSuggest(b: Solver, matches: HashSet[string], opts: seq[string]): seq[st
   result.sort do (x, y: string) -> int:
     cmp(keys[x], keys[y])
 
-# TODO improve these
-const suggest2nd = ["glean","liart","grunt","golem","cools","poncy"]
+const suggest2nd = ["plant", "loden", "nould"]
 proc suggest*(b: Solver): string =
   if b.move == 0:
     return "raise"

@@ -7,9 +7,10 @@ import std/algorithm
 import board
 import solver
 
-const ngames = 10
+const ngames = 1000
 
-proc playGame(board: Board): int =
+proc playGame(cnt: int, board: Board): int =
+  echo cnt
   var solver = initSolver()
   var idx = 0
   #board.printBoard()
@@ -41,7 +42,7 @@ proc tryFirstWords() =
   #let bconst = loadBoard("amass scrap elder aisle acrid super")
   parallel:
     for i in 0..<ngames:
-      results[i] = spawn playGame(shufboards[i])
+      results[i] = spawn playGame(i, shufboards[i])
       #results[i] = spawn playGame(bconst)
 
   results.sort()
