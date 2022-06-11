@@ -53,8 +53,7 @@ testing every word against it slightly challenging. I assert that a "good"
 choice of second word doesn't vary that much on the results of the first word,
 with the obvious exception that in the event of one of the letters in the first
 guess not showing up. Obviously there is some variation, but it's not huge.
-Right now I'm using this list, but this should change after a bigger stats run:
-`["glean","liart","grunt","golem","cools","poncy"]`
+The best results I have so far are: `["plant", "loden", "nould"]`
 
 ### Subsequent word choices
 
@@ -87,3 +86,7 @@ unknown letter; I don't know if this is sensible or not but it keeps the check
 size manageable. Note that the average green squares is inverted so that
 smallest values overall win. It makes sure to test the actual matching words
 first if there's a lot of options to avoid silly misses.
+
+Testing seems to validate this approach - results get a tiny bit worse with any
+of the obvious changes - but we're talking a change of like 0.1 at most in the
+mean.
