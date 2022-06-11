@@ -9,7 +9,7 @@ Run the interactive solver using `nim -d:release --mm:arc r solver.nim`. This
 will suggest moves to you. Input your results as `guess horizontal_result
 vertical_result`, where results are given as the string of colours you get,
 identified by first letter (e.g. red green yellow black white = `rgybw`). Give
-the overlapping character twice.
+the overlapping character in both.
 
 ## Supporting tools
 

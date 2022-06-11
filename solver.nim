@@ -306,14 +306,15 @@ proc addState*(b: var Solver, idx: int, word: string, dirs: seq[Direction], fast
       if b.letterplaced[y][x] == '\0':
         if (y mod 2 == 1) or (x mod 2 == 1):
           # TUNABLE how much we prioritise odd squares
-          # prioritise odd squares
           result += 2
         else:
           result += 1
         b.letterplaced[y][x] = guess
     i += 1
   b.edgeFilter()
-  if not fast:
+  if not fast and b.move != 0:
+    # no point doing this on the first move as we don't take it into account for
+    # the second anyway
     b.slowStateFilter()
   b.move += 1
 
@@ -411,10 +412,12 @@ proc sortSuggest(b: Solver, matches: HashSet[string], opts: seq[string]): seq[st
   result.sort do (x, y: string) -> int:
     cmp(keys[x], keys[y])
 
+# TUNABLE words picked here
+const suggest1st = "raise"
 const suggest2nd = ["plant", "loden", "nould"]
 proc suggest*(b: Solver): string =
   if b.move == 0:
-    return "raise"
+    return suggest1st
   if b.move == 1:
     for i in suggest2nd:
       var ok = true
