@@ -2,6 +2,7 @@ import std/threadpool
 import std/random
 import std/stats
 import std/algorithm
+import std/tables
 {.experimental: "parallel".}
 
 import board
@@ -47,11 +48,13 @@ proc tryFirstWords() =
   results.sort()
   var s: RunningStat
   s.push(results)
+  let c = results.toCountTable()
   echo "mean: ", s.mean
   echo "stdev: ", s.standardDeviation
   echo "median: ", results[len(results) div 2]
   echo "max: ", s.max
   echo "min: ", s.min
+  echo "counts: ", c
 
 when isMainModule:
   tryFirstWords()
